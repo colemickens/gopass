@@ -13,6 +13,7 @@ import (
 
 	"github.com/gopasspw/gopass/pkg/backend"
 	"github.com/gopasspw/gopass/pkg/config"
+	"github.com/gopasspw/gopass/pkg/otp"
 	"github.com/gopasspw/gopass/pkg/store"
 	"github.com/gopasspw/gopass/pkg/store/root"
 	"github.com/gopasspw/gopass/pkg/store/secret"
@@ -106,7 +107,12 @@ func TestRespondMessageQuery(t *testing.T) {
 }
 
 func TestRespondMessageGetData(t *testing.T) {
+	totpSuffix := "//totp/github-fake-account?secret=anpr67374qyho42j&issuer=github&digits=6"
+	totpURL := "otpauth:" + totpSuffix
+	totpSecret := secret.New("totp_are_cool", totpURL)
+
 	secrets := []storedSecret{
+		{[]string{"totp"}, totpSecret},
 		{[]string{"foo"}, secret.New("20", "hallo: welt")},
 		{[]string{"bar"}, secret.New("20", "---\nlogin: muh")},
 		{[]string{"complex"}, secret.New("20", `---
@@ -116,6 +122,12 @@ sub:
   subentry: 123
 `)},
 	}
+
+	totp, _, err := otp.Calculate(context.Background(), "_", totpSecret)
+	if err != nil {
+		assert.NoError(t, err)
+	}
+	expectedTotp := totp.OTP()
 
 	runRespondMessage(t,
 		`{"type":"getData","entry":"foo"}`,
@@ -129,6 +141,12 @@ sub:
 	runRespondMessage(t,
 		`{"type":"getData","entry":"complex"}`,
 		`{"login":"hallo","number":42,"sub":{"subentry":123}}`,
+		"", secrets)
+
+	// TODO: wait, why is the password not in the response? ??
+	runRespondMessage(t,
+		`{"type":"getData","entry":"totp"}`,
+		`{"current_totp":"`+expectedTotp+`","otpauth":"`+totpSuffix+`"}`,
 		"", secrets)
 }
 
